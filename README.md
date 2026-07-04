@@ -1,5 +1,9 @@
 # Aura - Premium Full-Stack Chat Application
 
+## 🚀 Live Links
+*   **Live Web Application**: [https://aura-premium-chat.vercel.app](https://aura-premium-chat.vercel.app)
+*   **Backend Server URL**: [https://aura-premium-chat.onrender.com](https://aura-premium-chat.onrender.com)
+
 Aura is a real-time, glassmorphic dark-mode chat application built using the MERN stack with Socket.IO. It features single-channel messaging, group chats, file/image sharing, online status tracking, typing indicators, read receipts, and profile management.
 
 ## Tech Stack
