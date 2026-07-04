@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# Secrets and environment configurations
+.env
+server/.env
+
+# Local user uploads
+server/uploads/*
+!server/uploads/.gitkeep
+
+# Build and IDE files
+client/dist/
+.vscode/
+.idea/
+.DS_Store
+*.log
