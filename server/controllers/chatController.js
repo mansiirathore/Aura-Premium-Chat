@@ -27,6 +27,8 @@ const accessChat = async (req, res) => {
         groupName: 'sender',
         isGroup: false,
         members: [req.user._id, userId],
+        status: 'requested',
+        initiatedBy: req.user._id,
       };
 
       const createdChat = await Chat.create(chatData);
@@ -41,7 +43,14 @@ const accessChat = async (req, res) => {
 
 const fetchChats = async (req, res) => {
   try {
-    let chats = await Chat.find({ members: { $elemMatch: { $eq: req.user._id } } })
+    let chats = await Chat.find({
+      members: { $elemMatch: { $eq: req.user._id } },
+      $or: [
+        { isGroup: true },
+        { status: 'accepted' },
+        { $and: [{ status: 'requested' }, { initiatedBy: req.user._id }] }
+      ]
+    })
       .populate('members', '-password')
       .populate('admin', '-password')
       .sort({ updatedAt: -1 });
@@ -301,6 +310,97 @@ const leaveOrDeleteGroup = async (req, res) => {
   }
 };
 
+const fetchChatRequests = async (req, res) => {
+  try {
+    let requests = await Chat.find({
+      members: { $elemMatch: { $eq: req.user._id } },
+      isGroup: false,
+      status: 'requested',
+      initiatedBy: { $ne: req.user._id }
+    })
+      .populate('members', '-password')
+      .populate('admin', '-password')
+      .sort({ updatedAt: -1 });
+
+    res.json(requests);
+  } catch (error) {
+    console.error('Fetch chat requests error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+const acceptChat = async (req, res) => {
+  const { chatId } = req.body;
+
+  if (!chatId) {
+    return res.status(400).json({ message: 'ChatId is required' });
+  }
+
+  try {
+    const chat = await Chat.findById(chatId);
+    if (!chat) {
+      return res.status(404).json({ message: 'Chat not found' });
+    }
+
+    if (!chat.members.includes(req.user._id)) {
+      return res.status(403).json({ message: 'Not authorized to accept this chat' });
+    }
+
+    chat.status = 'accepted';
+    await chat.save();
+
+    const fullChat = await Chat.findById(chatId)
+      .populate('members', '-password')
+      .populate('admin', '-password');
+
+    const io = req.app.get('socketio');
+    if (io) {
+      fullChat.members.forEach(m => {
+        io.to(m._id.toString()).emit('chat_accepted', fullChat);
+      });
+    }
+
+    res.json(fullChat);
+  } catch (error) {
+    console.error('Accept chat error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+const declineChat = async (req, res) => {
+  const { chatId } = req.body;
+
+  if (!chatId) {
+    return res.status(400).json({ message: 'ChatId is required' });
+  }
+
+  try {
+    const chat = await Chat.findById(chatId);
+    if (!chat) {
+      return res.status(404).json({ message: 'Chat not found' });
+    }
+
+    if (!chat.members.includes(req.user._id)) {
+      return res.status(403).json({ message: 'Not authorized to decline this chat' });
+    }
+
+    await Chat.findByIdAndDelete(chatId);
+    await Message.deleteMany({ chatId });
+
+    const io = req.app.get('socketio');
+    if (io) {
+      chat.members.forEach(m => {
+        io.to(m.toString()).emit('chat_declined', { chatId });
+      });
+    }
+
+    res.json({ message: 'Chat request declined and deleted' });
+  } catch (error) {
+    console.error('Decline chat error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 module.exports = {
   accessChat,
   fetchChats,
@@ -310,4 +410,7 @@ module.exports = {
   removeFromGroup,
   renameGroup,
   leaveOrDeleteGroup,
+  fetchChatRequests,
+  acceptChat,
+  declineChat,
 };

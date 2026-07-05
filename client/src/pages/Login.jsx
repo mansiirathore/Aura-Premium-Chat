@@ -28,7 +28,7 @@ function Login() {
         <div className="bg-bubble-2"></div>
       </div>
 
-      <div className="glass-panel" style={styles.card}>
+      <div className="glass-panel mobile-full-width" style={styles.card}>
         <div style={styles.header}>
           <div style={styles.logoContainer}>
             <MessageSquare size={32} color="#8b5cf6" />

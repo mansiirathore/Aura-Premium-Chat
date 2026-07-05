@@ -5,13 +5,14 @@ import { useNavigate } from 'react-router-dom';
 import { Search, LogOut, MessageSquarePlus, User, Users, ShieldAlert } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
-function Sidebar({ activeChat, setActiveChat, chats, setChats, onOpenProfile, onOpenGroup, notifications, clearNotification }) {
+function Sidebar({ activeChat, setActiveChat, chats, setChats, requests = [], setRequests, onOpenProfile, onOpenGroup, notifications, clearNotification }) {
   const { user, logout } = useAuth();
   const { onlineUsers } = useSocket();
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
+  const [activeTab, setActiveTab] = useState('chats');
 
   // Handle live user search
   useEffect(() => {
@@ -84,7 +85,7 @@ function Sidebar({ activeChat, setActiveChat, chats, setChats, onOpenProfile, on
   };
 
   return (
-    <div style={styles.sidebar}>
+    <div className="sidebar-container" style={styles.sidebar}>
       {/* Sidebar Header */}
       <div style={styles.header}>
         <div style={styles.profileSection} onClick={onOpenProfile} title="Edit Profile">
@@ -162,61 +163,136 @@ function Sidebar({ activeChat, setActiveChat, chats, setChats, onOpenProfile, on
         )}
       </div>
 
+      {/* Tabs */}
+      <div style={styles.tabsContainer}>
+        <button
+          onClick={() => setActiveTab('chats')}
+          style={{
+            ...styles.tabBtn,
+            borderBottom: activeTab === 'chats' ? '2.5px solid var(--accent-primary)' : '2.5px solid transparent',
+            color: activeTab === 'chats' ? 'var(--text-primary)' : 'var(--text-secondary)'
+          }}
+        >
+          Chats
+        </button>
+        <button
+          onClick={() => setActiveTab('requests')}
+          style={{
+            ...styles.tabBtn,
+            borderBottom: activeTab === 'requests' ? '2.5px solid var(--accent-primary)' : '2.5px solid transparent',
+            color: activeTab === 'requests' ? 'var(--text-primary)' : 'var(--text-secondary)',
+            position: 'relative'
+          }}
+        >
+          Requests
+          {requests.length > 0 && <span style={styles.requestBadge}>{requests.length}</span>}
+        </button>
+      </div>
+
       {/* Recent Chats List */}
       <div style={styles.chatsList}>
-        <h3 style={styles.listTitle}>Conversations</h3>
-        {chats.length === 0 ? (
-          <div style={styles.emptyList}>
-            <Users size={32} style={{ opacity: 0.3, marginBottom: '8px' }} />
-            <p>No active chats</p>
-            <p style={{ fontSize: '0.75rem', marginTop: '4px' }}>Search a user above to start chatting!</p>
-          </div>
-        ) : (
-          chats.map(chat => {
-            const details = getChatDetails(chat);
-            const isSelected = activeChat?._id === chat._id;
-            const unreadCount = notifications[chat._id] || 0;
+        <h3 style={styles.listTitle}>
+          {activeTab === 'chats' ? 'Conversations' : 'Message Requests'}
+        </h3>
+        {activeTab === 'chats' ? (
+          chats.length === 0 ? (
+            <div style={styles.emptyList}>
+              <Users size={32} style={{ opacity: 0.3, marginBottom: '8px' }} />
+              <p>No active chats</p>
+              <p style={{ fontSize: '0.75rem', marginTop: '4px' }}>Search a user above to start chatting!</p>
+            </div>
+          ) : (
+            chats.map(chat => {
+              const details = getChatDetails(chat);
+              const isSelected = activeChat?._id === chat._id;
+              const unreadCount = notifications[chat._id] || 0;
 
-            return (
-              <div
-                key={chat._id}
-                onClick={() => {
-                  setActiveChat(chat);
-                  if (unreadCount > 0) {
-                    clearNotification(chat._id);
-                  }
-                }}
-                style={{
-                  ...styles.chatItem,
-                  backgroundColor: isSelected ? 'rgba(255,255,255,0.06)' : 'transparent',
-                  borderLeft: isSelected ? '3px solid var(--accent-primary)' : '3px solid transparent',
-                }}
-              >
-                <div style={styles.avatarWrapper}>
-                  {details.avatar ? (
-                    <img src={details.avatar} alt={details.name} style={styles.chatAvatar} />
-                  ) : (
-                    <div style={styles.chatAvatarPlaceholder}>
-                      {details.name.charAt(0).toUpperCase()}
+              return (
+                <div
+                  key={chat._id}
+                  onClick={() => {
+                    setActiveChat(chat);
+                    if (unreadCount > 0) {
+                      clearNotification(chat._id);
+                    }
+                  }}
+                  style={{
+                    ...styles.chatItem,
+                    backgroundColor: isSelected ? 'rgba(255,255,255,0.06)' : 'transparent',
+                    borderLeft: isSelected ? '3px solid var(--accent-primary)' : '3px solid transparent',
+                  }}
+                >
+                  <div style={styles.avatarWrapper}>
+                    {details.avatar ? (
+                      <img src={details.avatar} alt={details.name} style={styles.chatAvatar} />
+                    ) : (
+                      <div style={styles.chatAvatarPlaceholder}>
+                        {details.name.charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    {details.isOnline && <div style={styles.onlineIndicator} />}
+                  </div>
+
+                  <div style={styles.chatInfo}>
+                    <div style={styles.chatTopLine}>
+                      <span style={styles.chatName}>{details.name}</span>
+                      {unreadCount > 0 && (
+                        <span style={styles.badge}>{unreadCount}</span>
+                      )}
                     </div>
-                  )}
-                  {details.isOnline && <div style={styles.onlineIndicator} />}
+                    <div style={styles.chatSubtext}>
+                      {details.subtext}
+                    </div>
+                  </div>
                 </div>
+              );
+            })
+          )
+        ) : (
+          requests.length === 0 ? (
+            <div style={styles.emptyList}>
+              <Users size={32} style={{ opacity: 0.3, marginBottom: '8px' }} />
+              <p>No requests pending</p>
+            </div>
+          ) : (
+            requests.map(chat => {
+              const details = getChatDetails(chat);
+              const isSelected = activeChat?._id === chat._id;
 
-                <div style={styles.chatInfo}>
-                  <div style={styles.chatTopLine}>
-                    <span style={styles.chatName}>{details.name}</span>
-                    {unreadCount > 0 && (
-                      <span style={styles.badge}>{unreadCount}</span>
+              return (
+                <div
+                  key={chat._id}
+                  onClick={() => {
+                    setActiveChat(chat);
+                  }}
+                  style={{
+                    ...styles.chatItem,
+                    backgroundColor: isSelected ? 'rgba(255,255,255,0.06)' : 'transparent',
+                    borderLeft: isSelected ? '3px solid var(--accent-primary)' : '3px solid transparent',
+                  }}
+                >
+                  <div style={styles.avatarWrapper}>
+                    {details.avatar ? (
+                      <img src={details.avatar} alt={details.name} style={styles.chatAvatar} />
+                    ) : (
+                      <div style={styles.chatAvatarPlaceholder}>
+                        {details.name.charAt(0).toUpperCase()}
+                      </div>
                     )}
                   </div>
-                  <div style={styles.chatSubtext}>
-                    {details.subtext}
+
+                  <div style={styles.chatInfo}>
+                    <div style={styles.chatTopLine}>
+                      <span style={styles.chatName}>{details.name}</span>
+                    </div>
+                    <div style={styles.chatSubtext}>
+                      New message request
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })
+              );
+            })
+          )
         )}
       </div>
     </div>
@@ -485,6 +561,33 @@ const styles = {
     padding: '40px 20px',
     fontSize: '0.85rem',
     textAlign: 'center',
+  },
+  tabsContainer: {
+    display: 'flex',
+    borderBottom: '1px solid var(--border-glass-light)',
+    padding: '0 20px',
+    gap: '16px',
+    backgroundColor: 'rgba(10, 11, 16, 0.2)',
+  },
+  tabBtn: {
+    background: 'none',
+    border: 'none',
+    padding: '12px 4px',
+    fontSize: '0.85rem',
+    fontWeight: '600',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    transition: 'all 0.2s',
+  },
+  requestBadge: {
+    backgroundColor: 'var(--accent-secondary)',
+    color: 'white',
+    fontSize: '0.65rem',
+    fontWeight: '700',
+    padding: '2px 6px',
+    borderRadius: '99px',
   },
 };
 

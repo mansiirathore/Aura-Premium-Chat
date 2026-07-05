@@ -24,6 +24,15 @@ const chatSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
     },
+    status: {
+      type: String,
+      enum: ['requested', 'accepted', 'declined'],
+      default: 'accepted',
+    },
+    initiatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
   },
   { timestamps: true }
 );

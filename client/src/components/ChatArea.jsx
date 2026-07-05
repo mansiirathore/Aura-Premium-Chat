@@ -3,7 +3,7 @@ import { useAuth, api } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
 import {
   Send, Paperclip, Trash2, Edit3, X, File, Download,
-  MoreVertical, Check, CheckCheck, Smile, Settings, Users, UserPlus, UserMinus, LogOut
+  MoreVertical, Check, CheckCheck, Smile, Settings, Users, UserPlus, UserMinus, LogOut, ArrowLeft
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
@@ -13,7 +13,7 @@ const POPULAR_EMOJIS = [
   '👎', '👏', '🙌', '🙏', '❤️', '🔥', '✨', '🎉'
 ];
 
-function ChatArea({ activeChat, setActiveChat, messages, setMessages, typingStatus, clearNotification }) {
+function ChatArea({ activeChat, setActiveChat, messages, setMessages, typingStatus, clearNotification, onAcceptRequest, onDeclineRequest }) {
   const { user } = useAuth();
   const { socket, onlineUsers } = useSocket();
   const [content, setContent] = useState('');
@@ -249,6 +249,36 @@ function ChatArea({ activeChat, setActiveChat, messages, setMessages, typingStat
     }
   };
 
+  // Request Handlers
+  const handleAcceptRequest = async () => {
+    try {
+      const res = await api.put('/chat/accept', { chatId: activeChat._id });
+      setActiveChat(res.data);
+      toast.success('Message request accepted!');
+      if (onAcceptRequest) {
+        onAcceptRequest(res.data);
+      }
+    } catch (error) {
+      console.error('Accept request error:', error);
+      toast.error('Failed to accept request');
+    }
+  };
+
+  const handleDeclineRequest = async () => {
+    if (!window.confirm('Are you sure you want to decline and delete this request?')) return;
+    try {
+      await api.put('/chat/decline', { chatId: activeChat._id });
+      setActiveChat(null);
+      toast.success('Message request declined and deleted');
+      if (onDeclineRequest) {
+        onDeclineRequest(activeChat._id);
+      }
+    } catch (error) {
+      console.error('Decline request error:', error);
+      toast.error('Failed to decline request');
+    }
+  };
+
   // Group Operations
   const handleRenameGroup = async () => {
     if (!newGroupName.trim() || newGroupName === activeChat.groupName) return;
@@ -338,6 +368,9 @@ function ChatArea({ activeChat, setActiveChat, messages, setMessages, typingStat
   const headerDetails = getHeaderDetails();
   const activeTyping = typingStatus[activeChat._id] || [];
 
+  const initiatedById = activeChat?.initiatedBy?._id || activeChat?.initiatedBy;
+  const isRequestPending = activeChat && !activeChat.isGroup && activeChat.status === 'requested' && initiatedById !== user._id;
+
   // Render Seen Tick Helper
   const renderTicks = (msg) => {
     const isOtherMemberOnline = activeChat.isGroup 
@@ -357,12 +390,19 @@ function ChatArea({ activeChat, setActiveChat, messages, setMessages, typingStat
   };
 
   return (
-    <div style={styles.chatViewport}>
+    <div className="chatarea-container" style={styles.chatViewport}>
       {/* Main chat window */}
       <div style={styles.chatContainer}>
         {/* Chat Header */}
         <div style={styles.header}>
           <div style={styles.headerInfo}>
+            <button 
+              onClick={() => setActiveChat(null)} 
+              className="mobile-back-btn"
+              title="Go back"
+            >
+              <ArrowLeft size={22} />
+            </button>
             {headerDetails.avatar ? (
               <img src={headerDetails.avatar} alt={headerDetails.name} style={styles.headerAvatar} />
             ) : (
@@ -572,89 +612,105 @@ function ChatArea({ activeChat, setActiveChat, messages, setMessages, typingStat
         </div>
 
         {/* Input Bar Section */}
-        <form onSubmit={handleSend} style={styles.inputBar}>
-          {/* File Selected Attachment Preview */}
-          {attachment && (
-            <div className="glass-panel" style={styles.previewPanel}>
-              {attachmentPreview === 'file' ? (
-                <div style={styles.filePreviewBadge}>
-                  <File size={20} color="#8b5cf6" />
-                  <span style={styles.previewName}>{attachment.name}</span>
-                </div>
-              ) : (
-                <img src={attachmentPreview} alt="Preview" style={styles.imagePreviewThumb} />
-              )}
-              <button type="button" onClick={clearAttachment} style={styles.clearAttachBtn}>
-                <X size={16} />
+        {isRequestPending ? (
+          <div className="glass-panel" style={styles.requestBanner}>
+            <p style={styles.requestBannerText}>
+              Do you want to accept this message request from <strong>{headerDetails.name}</strong>? They won't know you've seen their message until you accept.
+            </p>
+            <div style={styles.requestActions}>
+              <button onClick={handleAcceptRequest} className="glass-button" style={styles.acceptBtn}>
+                Accept
+              </button>
+              <button onClick={handleDeclineRequest} style={styles.declineBtn}>
+                Decline
               </button>
             </div>
-          )}
-
-          {showEmojiPicker && (
-            <div className="glass-panel" style={styles.emojiPickerContainer}>
-              <div style={styles.emojiGrid}>
-                {POPULAR_EMOJIS.map((emoji) => (
-                  <span
-                    key={emoji}
-                    onClick={() => {
-                      setContent((prev) => prev + emoji);
-                      setShowEmojiPicker(false);
-                    }}
-                    style={styles.emojiItem}
-                  >
-                    {emoji}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div style={styles.inputControls}>
-            <button 
-              type="button" 
-              onClick={() => fileInputRef.current.click()} 
-              style={styles.attachBtn}
-              title="Add attachment"
-            >
-              <Paperclip size={20} />
-            </button>
-
-            <button 
-              type="button" 
-              onClick={() => setShowEmojiPicker(!showEmojiPicker)} 
-              style={{ ...styles.attachBtn, color: showEmojiPicker ? 'var(--accent-primary)' : '#a1a1aa' }}
-              title="Add emoji"
-            >
-              <Smile size={20} />
-            </button>
-
-            <input
-              type="file"
-              ref={fileInputRef}
-              style={{ display: 'none' }}
-              onChange={handleFileChange}
-            />
-
-            <input
-              type="text"
-              className="glass-input"
-              style={styles.chatInput}
-              placeholder="Write a message..."
-              value={content}
-              onChange={handleInputChange}
-              onFocus={() => setShowEmojiPicker(false)}
-            />
-
-            <button type="submit" className="glass-button" style={styles.sendBtn} disabled={sending}>
-              <Send size={18} />
-            </button>
           </div>
-        </form>
+        ) : (
+          <form onSubmit={handleSend} style={styles.inputBar}>
+            {/* File Selected Attachment Preview */}
+            {attachment && (
+              <div className="glass-panel" style={styles.previewPanel}>
+                {attachmentPreview === 'file' ? (
+                  <div style={styles.filePreviewBadge}>
+                    <File size={20} color="#8b5cf6" />
+                    <span style={styles.previewName}>{attachment.name}</span>
+                  </div>
+                ) : (
+                  <img src={attachmentPreview} alt="Preview" style={styles.imagePreviewThumb} />
+                )}
+                <button type="button" onClick={clearAttachment} style={styles.clearAttachBtn}>
+                  <X size={16} />
+                </button>
+              </div>
+            )}
+
+            {showEmojiPicker && (
+              <div className="glass-panel" style={styles.emojiPickerContainer}>
+                <div style={styles.emojiGrid}>
+                  {POPULAR_EMOJIS.map((emoji) => (
+                    <span
+                      key={emoji}
+                      onClick={() => {
+                        setContent((prev) => prev + emoji);
+                        setShowEmojiPicker(false);
+                      }}
+                      style={styles.emojiItem}
+                    >
+                      {emoji}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div style={styles.inputControls}>
+              <button 
+                type="button" 
+                onClick={() => fileInputRef.current.click()} 
+                style={styles.attachBtn}
+                title="Add attachment"
+              >
+                <Paperclip size={20} />
+              </button>
+
+              <button 
+                type="button" 
+                onClick={() => setShowEmojiPicker(!showEmojiPicker)} 
+                style={{ ...styles.attachBtn, color: showEmojiPicker ? 'var(--accent-primary)' : '#a1a1aa' }}
+                title="Add emoji"
+              >
+                <Smile size={20} />
+              </button>
+
+              <input
+                type="file"
+                ref={fileInputRef}
+                style={{ display: 'none' }}
+                onChange={handleFileChange}
+              />
+
+              <input
+                type="text"
+                className="glass-input"
+                style={styles.chatInput}
+                placeholder="Write a message..."
+                value={content}
+                onChange={handleInputChange}
+                onFocus={() => setShowEmojiPicker(false)}
+              />
+
+              <button type="submit" className="glass-button" style={styles.sendBtn} disabled={sending}>
+                <Send size={18} />
+              </button>
+            </div>
+          </form>
+        )}
       </div>
 
       {/* Right Drawer - Group Settings */}
       {activeChat.isGroup && showDrawer && (
-        <div className="glass-panel" style={styles.drawer}>
+        <div className="glass-panel drawer-responsive" style={styles.drawer}>
           <div style={styles.drawerHeader}>
             <h3 style={styles.drawerTitle}>Group Settings</h3>
             <button onClick={() => setShowDrawer(false)} style={styles.iconBtn}>
@@ -1297,6 +1353,56 @@ const styles = {
     borderRadius: '6px',
     transition: 'background-color 0.1s',
     userSelect: 'none',
+  },
+  requestBanner: {
+    margin: '16px 24px',
+    padding: '24px',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '16px',
+    textAlign: 'center',
+    border: '1px solid var(--border-glass)',
+    borderRadius: '16px',
+    background: 'var(--bg-glass-dark)',
+    backdropFilter: 'blur(20px)',
+    boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.4)',
+  },
+  requestBannerText: {
+    fontSize: '0.9rem',
+    color: 'var(--text-primary)',
+    lineHeight: '1.5',
+    maxWidth: '400px',
+  },
+  requestActions: {
+    display: 'flex',
+    gap: '16px',
+    width: '100%',
+    justifyContent: 'center',
+  },
+  acceptBtn: {
+    padding: '10px 24px',
+    fontSize: '0.9rem',
+    minWidth: '100px',
+  },
+  declineBtn: {
+    background: 'rgba(239, 68, 68, 0.1)',
+    border: '1px solid rgba(239, 68, 68, 0.25)',
+    color: '#ef4444',
+    padding: '10px 24px',
+    fontSize: '0.9rem',
+    minWidth: '100px',
+    cursor: 'pointer',
+    borderRadius: '10px',
+    fontFamily: 'inherit',
+    fontWeight: '600',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    transition: 'all 0.2s',
+  },
+  backBtn: {
+    // Empty class layout handles it
   },
 };
 

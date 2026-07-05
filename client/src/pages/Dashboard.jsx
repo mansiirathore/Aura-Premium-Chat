@@ -12,6 +12,7 @@ function Dashboard() {
   const { socket } = useSocket();
   const [activeChat, setActiveChat] = useState(null);
   const [chats, setChats] = useState([]);
+  const [requests, setRequests] = useState([]);
   const [messages, setMessages] = useState([]);
   const [notifications, setNotifications] = useState({});
   const [typingStatus, setTypingStatus] = useState({});
@@ -20,17 +21,19 @@ function Dashboard() {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isGroupOpen, setIsGroupOpen] = useState(false);
 
-  // 1. Initial Load of Chats
+  // 1. Initial Load of Chats and Requests
   useEffect(() => {
-    const loadChats = async () => {
+    const loadChatsAndRequests = async () => {
       try {
-        const res = await api.get('/chat');
-        setChats(res.data);
+        const resChats = await api.get('/chat');
+        setChats(resChats.data);
+        const resReqs = await api.get('/chat/requests');
+        setRequests(resReqs.data);
       } catch (error) {
-        console.error('Failed to load chats', error);
+        console.error('Failed to load chats or requests', error);
       }
     };
-    loadChats();
+    loadChatsAndRequests();
   }, [activeChat]);
 
   // 2. Fetch Messages when active chat changes
@@ -176,6 +179,30 @@ function Dashboard() {
       }
     });
 
+    // Chat request accepted
+    socket.on('chat_accepted', (acceptedChat) => {
+      setChats((prev) => {
+        if (prev.some((c) => c._id === acceptedChat._id)) {
+          return prev.map((c) => (c._id === acceptedChat._id ? acceptedChat : c));
+        }
+        return [acceptedChat, ...prev];
+      });
+      setRequests((prev) => prev.filter((r) => r._id !== acceptedChat._id));
+      if (activeChat && activeChat._id === acceptedChat._id) {
+        setActiveChat(acceptedChat);
+      }
+    });
+
+    // Chat request declined
+    socket.on('chat_declined', ({ chatId }) => {
+      setChats((prev) => prev.filter((c) => c._id !== chatId));
+      setRequests((prev) => prev.filter((r) => r._id !== chatId));
+      if (activeChat && activeChat._id === chatId) {
+        setActiveChat(null);
+        toast.error('The message request was declined.');
+      }
+    });
+
     return () => {
       socket.off('receive_message');
       socket.off('message_updated');
@@ -186,6 +213,8 @@ function Dashboard() {
       socket.off('group_updated');
       socket.off('group_deleted');
       socket.off('chat_deleted');
+      socket.off('chat_accepted');
+      socket.off('chat_declined');
     };
   }, [socket, activeChat, user]);
 
@@ -203,12 +232,14 @@ function Dashboard() {
   };
 
   return (
-    <div style={styles.dashboard}>
+    <div className={`dashboard-container ${activeChat ? 'chat-active' : ''}`} style={styles.dashboard}>
       <Sidebar
         activeChat={activeChat}
         setActiveChat={setActiveChat}
         chats={chats}
         setChats={setChats}
+        requests={requests}
+        setRequests={setRequests}
         onOpenProfile={() => setIsProfileOpen(true)}
         onOpenGroup={() => setIsGroupOpen(true)}
         notifications={notifications}
@@ -222,6 +253,18 @@ function Dashboard() {
         setMessages={setMessages}
         typingStatus={typingStatus}
         clearNotification={clearNotification}
+        onAcceptRequest={(updatedChat) => {
+          setChats((prev) => {
+            if (prev.some((c) => c._id === updatedChat._id)) {
+              return prev.map((c) => (c._id === updatedChat._id ? updatedChat : c));
+            }
+            return [updatedChat, ...prev];
+          });
+          setRequests((prev) => prev.filter((r) => r._id !== updatedChat._id));
+        }}
+        onDeclineRequest={(chatId) => {
+          setRequests((prev) => prev.filter((r) => r._id !== chatId));
+        }}
       />
 
       {/* Modal overlays */}
